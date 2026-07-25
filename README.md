@@ -1,4 +1,4 @@
-#🕵️ Distributed Cascade Detective
+🕵️ Distributed Cascade Detective
 
 An AI agent that detects a cascading failure across a distributed system, correctly
 identifies the *true* root cause (not just the symptom), fixes it, and verifies the
