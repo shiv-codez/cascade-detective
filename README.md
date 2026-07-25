@@ -1,10 +1,10 @@
-# Distributed Cascade Detective
+#🕵️ Distributed Cascade Detective
 
 An AI agent that detects a cascading failure across a distributed system, correctly
 identifies the *true* root cause (not just the symptom), fixes it, and verifies the
 fix worked — all using SigNoz for observability and diagnosis.
 
-## Why this is different from a typical "self-healing bot"
+## 🎯 Why this is different from a typical "self-healing bot"
 
 Most single-service alert-and-fix demos react to one alert on one service. This
 project instruments **4 chained microservices** with full OpenTelemetry distributed
@@ -14,7 +14,7 @@ the agent has to correctly tell the difference between a service that's actually
 and one that's just waiting — using **self-time analysis** on real span data, not just
 "which service has the longest span."
 
-## Architecture
+## 🏗️ Architecture
 
 ```
 Order Service → Payment Service → Inventory Service → Notification Service
@@ -109,7 +109,7 @@ flowchart TD
   5. Call the root-cause service's remediation endpoint to disable the fault
   6. Send fresh requests and re-query SigNoz to **verify the fix actually worked**
 
-## Tech stack (all free tier)
+## 🛠️ Tech stack (all free tier)
 
 - **FastAPI** + **httpx** — microservices and inter-service async calls
 - **OpenTelemetry Python SDK** — distributed tracing, auto-instrumented
@@ -120,14 +120,14 @@ flowchart TD
 - **GitHub Copilot** — in-editor code generation
 - **Claude** — architecture planning and debugging
 
-## AI tool disclosure
+## 🤖 AI tool disclosure
 
 This project was built with AI assistance throughout: GitHub Copilot for in-editor
 code generation, and Claude for architecture planning, debugging, and iterative
 problem-solving during development. Gemini 2.5 Flash Lite is also a functional part
 of the running system itself (the diagnosis engine), not just a dev tool.
 
-## Running it
+## 🚀 Running it
 
 **Prerequisites:** Docker, Docker Compose, Python 3.10+, a SigNoz deployment (via
 Foundry — see `casting.yaml`), a free Gemini API key.
@@ -154,7 +154,7 @@ Foundry — see `casting.yaml`), a free Gemini API key.
    python3 diagnose.py
    ```
 
-## What's demonstrated in SigNoz
+## 📊 What's demonstrated in SigNoz
 
 - Distributed traces spanning all 4 services with correct context propagation
 - A metric/trace-based alert ("Payment Service High Latency") firing on P95 latency
