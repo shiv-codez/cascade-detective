@@ -1,0 +1,5 @@
+fastapi
+uvicorn[standard]
+opentelemetry-distro[otlp]
+opentelemetry-instrumentation-fastapi
+opentelemetry-instrumentation-httpx

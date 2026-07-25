@@ -1,0 +1,47 @@
+services:
+  notification-service:
+    build: ./notification-service
+    ports:
+      - "8013:8000"
+    environment:
+      - OTEL_SERVICE_NAME=notification-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  inventory-service:
+    build: ./inventory-service
+    ports:
+      - "8012:8000"
+    environment:
+      - NOTIFICATION_URL=http://notification-service:8000/notify
+      - OTEL_SERVICE_NAME=inventory-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  payment-service:
+    build: ./payment-service
+    ports:
+      - "8011:8000"
+    environment:
+      - INVENTORY_URL=http://inventory-service:8000/reserve
+      - OTEL_SERVICE_NAME=payment-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  order-service:
+    build: ./order-service
+    ports:
+      - "8010:8000"
+    environment:
+      - PAYMENT_URL=http://payment-service:8000/charge
+      - OTEL_SERVICE_NAME=order-service
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
