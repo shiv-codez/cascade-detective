@@ -1,102 +1,100 @@
-# SchemeSaathi — Architecture
+# Distributed Cascade Detective — Architecture
 
 ## System Overview
 
-SchemeSaathi is a client-side Progressive Web Application.
-There is no backend server. All logic runs in the browser.
-The only external calls are to:
-- Microsoft Graph API (Work IQ grounding)
-- Anthropic Claude API (AI reasoning)
-Both calls fail gracefully with a local fallback.
+A distributed system of 4 chained microservices, fully instrumented with
+OpenTelemetry, monitored by SigNoz. An AI agent uses the SigNoz MCP server
+to detect a cascading failure, correctly diagnose the true root cause (not
+just the symptom), fix it, and verify the fix actually worked.
 
 ## Full Architecture Diagram
 
 ```mermaid
 flowchart TD
-    USER["👤 User\nMobile or Desktop\n12 languages — voice or text"]
+    USER["👤 Load / Requests\nload_test.sh"]
 
-    subgraph Browser ["Browser — Runs Entirely Client-Side"]
-        SW["sw.js\nService Worker\nCache-first offline routing"]
-        HTML["index.html\nSingle page app\nProfile wizard → Results → Chat"]
-        CSS["styles.css\nWarm Government design\nARIA accessible"]
-        I18N["i18n.js\n12 language translations\nRTL support for Urdu"]
-
-        subgraph Agent ["agent.js — 5-Step AI Pipeline"]
-            STEP1["Step 1\nLocal Eligibility Filter\nOn-device, instant"]
-            STEP2["Step 2\nWork IQ Grounding\nMicrosoft Graph API"]
-            STEP3["Step 3\nClaude API Call\nRanking + explanation"]
-            STEP4["Step 4\nResults Renderer\nScheme cards + chat"]
-            STEP5["Step 5\nFallback Engine\nOffline simulation"]
-        end
-
-        DB["schemes.js\n32 government schemes\n15 central + 17 state"]
+    subgraph Services ["Microservices — Docker Compose, OpenTelemetry Auto-Instrumented"]
+        ORDER["Order Service\nFastAPI :8010\nEntry point"]
+        PAYMENT["Payment Service\nFastAPI :8011\n⚠️ Injected chaos:\n~30% requests sleep 2-5s\n/admin/enable-disable-chaos"]
+        INVENTORY["Inventory Service\nFastAPI :8012"]
+        NOTIFY["Notification Service\nFastAPI :8013"]
     end
 
-    subgraph External ["External APIs"]
-        WORKIQ["Microsoft Work IQ\ngraph.microsoft.com\nSearch + document grounding"]
-        CLAUDE["Anthropic Claude\napi.anthropic.com\nclaude-sonnet-4-20250514"]
-        WHATSAPP["WhatsApp\nwa.me deep link\nPre-filled in user language"]
+    subgraph Observability ["SigNoz — via Foundry"]
+        COLLECTOR["OTel Collector\n:4317/:4318"]
+        SIGNOZ["SigNoz Backend\nTraces · Metrics · Alerts · Dashboards"]
+        ALERT["Alert Rule\nPayment P95 Latency > threshold"]
+        MCP["SigNoz MCP Server\n:8000/mcp"]
     end
 
-    USER -->|Profile input| HTML
-    HTML --> STEP1
-    DB --> STEP1
-    STEP1 -->|Filtered schemes| STEP2
-    STEP2 <-->|OAuth token + query| WORKIQ
-    STEP2 -->|Grounded context| STEP3
-    STEP3 <-->|System prompt + profile| CLAUDE
-    STEP3 -->|Ranked JSON| STEP4
-    STEP4 -->|Follow-up questions| STEP3
-    STEP4 -->|Share button| WHATSAPP
-    STEP1 -->|If offline| STEP5
-    STEP2 -->|If API fails| STEP5
-    STEP3 -->|If API fails| STEP5
-    SW -.->|Serves cached assets| HTML
-    I18N -.->|UI translations| HTML
-    CSS -.->|Styles| HTML
+    subgraph Agent ["agent/diagnose.py — Detect → Trace → Diagnose → Act → Verify"]
+        FIND["1. Find recent slow trace\nsignoz_search_traces"]
+        FETCH["2. Fetch full trace\nsignoz_get_trace_details"]
+        SELFTIME["3. Compute self-time per span\n(exclude child-call wait time)"]
+        GEMINI["4. Diagnose root cause\nGemini 2.5 Flash Lite"]
+        ACT["5. Remediate\nPOST /admin/disable-chaos"]
+        VERIFY["6. Verify fix\nFresh requests + SigNoz re-query"]
+    end
+
+    USER --> ORDER
+    ORDER -->|httpx async| PAYMENT
+    PAYMENT -->|httpx async| INVENTORY
+    INVENTORY -->|httpx async| NOTIFY
+
+    ORDER -.->|OTLP traces| COLLECTOR
+    PAYMENT -.->|OTLP traces| COLLECTOR
+    INVENTORY -.->|OTLP traces| COLLECTOR
+    NOTIFY -.->|OTLP traces| COLLECTOR
+    COLLECTOR --> SIGNOZ
+    SIGNOZ --> ALERT
+    SIGNOZ --> MCP
+
+    FIND <-->|MCP tool call| MCP
+    FETCH <-->|MCP tool call| MCP
+    FIND --> FETCH --> SELFTIME --> GEMINI --> ACT
+    ACT -->|disable chaos flag| PAYMENT
+    ACT --> VERIFY
+    VERIFY -->|new requests| ORDER
+    VERIFY <-->|MCP tool call| MCP
 ```
 
-## Data Flow — Single User Journey
+## Data Flow — Single Cascade Detection Cycle
 
 ```
-1. User opens app (served from cache if offline — sw.js)
-2. User selects language (i18n.js loads translations)
-3. User fills profile form — voice or text input
-4. "Find my schemes" button pressed
-5. Step 1: filterSchemesByProfile() runs locally against schemes.js
-   → Returns N eligible schemes in ~10ms
-6. Step 2: groundWithWorkIQ() calls Microsoft Graph Search
-   → Returns official document summaries for grounding context
-   → On failure: returns { groundingSource: "local_fallback" }
-7. Step 3: explainWithClaude() sends profile + filtered schemes
-   + grounding context to Claude API
-   → Returns ranked JSON with urgency, explanation, action steps
-   → On failure: buildFallbackResponse() runs locally
-8. Step 4: Results rendered as scheme cards
-   → Each card shows: urgency badge, benefit amount, why you qualify,
-     documents needed, official website link, WhatsApp share button
-9. Follow-up chat: answerFollowUp() handles questions using Claude
-   → On failure: keyword-based local responses from i18n.js
+1. load_test.sh sends 20 requests to Order Service
+2. Order → Payment → Inventory → Notification, each hop traced via OTel
+3. ~30% of requests hit Payment's injected chaos (2-5s random delay)
+   → Order and downstream calls appear slow too, but only because they wait
+4. SigNoz alert fires when Payment's P95 latency crosses threshold
+5. agent/diagnose.py runs:
+   a. Query SigNoz MCP for a recent trace with duration > 2s
+   b. Fetch all spans in that trace across all 4 services
+   c. Compute each span's self-time (duration minus time spent in children)
+   d. Send span + self-time data to Gemini — asked to find the span with
+      the highest self-time, not just the longest total duration
+   e. Gemini correctly identifies Payment Service as root cause
+   f. Agent calls Payment's /admin/disable-chaos endpoint
+   g. Agent sends 10 fresh requests and times them directly
+   h. Agent re-queries SigNoz for Payment's P95 latency
+   i. Both measurements confirm recovery: ~48ms avg (vs. 2000-5000ms before)
 ```
 
-## File Dependency Map
+## Why self-time, not total duration
 
-```
-index.html
-  ├── styles.css
-  ├── schemes.js        (loaded first — no dependencies)
-  ├── i18n.js           (loaded second — no dependencies)
-  └── agent.js          (loaded last — depends on schemes.js, i18n.js)
+A cascading failure makes every upstream service *look* slow, because each
+one is blocked waiting on the next. Total span duration alone can't tell
+you which service is actually doing slow work versus which is just
+waiting. Self-time (a span's own duration minus the combined duration of
+its child spans) isolates the real bottleneck — this is the core technical
+mechanism that makes root-cause diagnosis reliable instead of guesswork.
 
-sw.js                   (registered by index.html — independent)
-manifest.json           (referenced by index.html — independent)
-```
+## Security / Scope Notes
 
-## Security Notes
-
-- No user data is stored on any server
-- Profile data lives only in browser memory (cleared on page close)
-- API keys are entered by the user and stored in localStorage only
-- No analytics, no tracking, no cookies
-- All external API calls use HTTPS
-- Work IQ token scoped to read-only: Files.Read, Sites.Read.All
+- No production secrets in the repo — `GEMINI_API_KEY` and `SIGNOZ_API_KEY`
+  are loaded from a local `.env` file (gitignored); `.env.example` shows
+  the required shape.
+- SigNoz MCP server requires an authenticated Service Account API key,
+  not the personal login used for the SigNoz UI.
+- The remediation action is intentionally scoped to one failure mode on
+  one service (Payment), not a general-purpose auto-healing engine —
+  see README's "Known limitations" section.
