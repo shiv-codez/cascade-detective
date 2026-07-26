@@ -2,7 +2,7 @@
 
 An AI agent that detects a cascading failure across a distributed system, correctly
 identifies the *true* root cause (not just the symptom), fixes it, and verifies the
-fix worked — all using SigNoz for observability and diagnosis.
+fix worked - all using SigNoz for observability and diagnosis.
 
 ## 🎯 Why this is different from a typical "self-healing bot"
 
@@ -11,7 +11,7 @@ project instruments **4 chained microservices** with full OpenTelemetry distribu
 tracing, so a single request produces **one connected trace across all 4 services**.
 When a failure cascades (one slow service makes everything upstream *look* slow too),
 the agent has to correctly tell the difference between a service that's actually slow
-and one that's just waiting — using **self-time analysis** on real span data, not just
+and one that's just waiting , using **self-time analysis** on real span data, not just
 "which service has the longest span."
 
 ## 🏗️ Architecture
